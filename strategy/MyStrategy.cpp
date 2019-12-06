@@ -48,9 +48,11 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		return result;
 	};
 
+	constexpr auto best_weapon = WeaponType::PISTOL;
+
 	const auto nearest_weapon = [&] () {
 		std::optional<std::pair<double, double>> result;
-		if (unit.weapon != nullptr && unit.weapon->typ == WeaponType::ASSAULT_RIFLE)
+		if (unit.weapon != nullptr && unit.weapon->typ == best_weapon)
 			return result;
 		auto min_distance = std::numeric_limits<double>::max();
 		for (auto const& l : game.lootBoxes)
@@ -58,7 +60,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			auto const w = std::dynamic_pointer_cast<const Item::Weapon>(l.item);
 			if (w == nullptr)
 				continue;
-			if (unit.weapon != nullptr && w->weaponType != WeaponType::ASSAULT_RIFLE)
+			if (unit.weapon != nullptr && w->weaponType != best_weapon)
 				continue;
 			auto const d = distance(l.position.x, l.position.y);
 			if (d < min_distance)
@@ -92,8 +94,8 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		if (w != std::nullopt)
 			return w;
 		auto const e = nearest_enemy();
-		if (e.has_value() && distance(e.value().first, e.value().second) < 10.0)
-			return std::nullopt;
+		//if (e.has_value() && distance(e.value().first, e.value().second) < 10.0)
+		//	return std::nullopt;
 		return e;
 	};
 
@@ -104,6 +106,9 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		debug.draw(CustomData::Line(Vec2Float(unit.position.x, unit.position.y), Vec2Float(poi.value().first, poi.value().second), 0.1, ColorFloat(1.0, 1.0, 1.0, 0.5)));
 		debug.draw(CustomData::Rect(Vec2Float(poi.value().first, poi.value().second), Vec2Float(0.3, 0.3), ColorFloat(1.0, 1.0, 1.0, 0.5)));
 	}
+
+	if (unit.weapon != nullptr)
+		debug.draw(CustomData::Log("Spread: " + std::to_string(unit.weapon->spread)));
 
 	UnitAction action;
 	action.plantMine = [&] () {
@@ -156,7 +161,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto const e = nearest_enemy();
 		if (e.has_value())
 		{
-			debug.draw(CustomData::Log(std::to_string(distance(e.value().first, e.value().second))));
+			debug.draw(CustomData::Log("Distance to enemy: " + std::to_string(distance(e.value().first, e.value().second))));
 			if (distance(e.value().first, e.value().second) < 1.8001)
 				return true;
 		}
@@ -174,7 +179,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 	action.swapWeapon = [&] () {
 		if (unit.weapon == nullptr)
 			return true;
-		if (unit.weapon->typ != WeaponType::ASSAULT_RIFLE)
+		if (unit.weapon->typ != best_weapon)
 			return true;
 		return false;
 	}();
