@@ -10,7 +10,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		return std::abs(unit.position.x - x) + std::abs(unit.position.y - y);
 	};
 
-	const auto nearest_enemy = [&]() {
+	const auto nearest_enemy = [&] () {
 		auto min_distance = std::numeric_limits<double>::max();
 		std::optional<std::pair<double, double>> result;
 		for (auto const& u : game.units)
@@ -107,6 +107,8 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 
 	UnitAction action;
 	action.plantMine = [&] () {
+		return false;
+
 		auto const e = nearest_enemy();
 		if (!e.has_value())
 			return false;
@@ -123,11 +125,11 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto delta_x = e.value().first - prev_pos.first;
 		auto delta_y = e.value().second - prev_pos.second;
 		prev_pos = e.value();
-		auto const d = distance(e.value().first, e.value().second);
+		auto const d = distance(e.value().first, e.value().second) - 0.5;
 		if (unit.weapon != nullptr)
 		{
-			delta_x *= d / unit.weapon->params.bullet.speed;
-			delta_y *= d / unit.weapon->params.bullet.speed;
+			delta_x *= d / unit.weapon->params.bullet.speed * game.properties.ticksPerSecond;
+			delta_y *= d / unit.weapon->params.bullet.speed * game.properties.ticksPerSecond;
 		}
 		prev_aim[unit.id] = Vec2Double(e.value().first + delta_x - unit.position.x, e.value().second + delta_y - unit.position.y - game.properties.unitSize.y / 2.0);
 		debug.draw(CustomData::Rect(Vec2Float(unit.position.x + prev_aim[unit.id].x, unit.position.y + game.properties.unitSize.y / 2.0 + prev_aim[unit.id].y), Vec2Float(0.2, 0.2), ColorFloat(0.0, 1.0, 1.0, 0.5)));
