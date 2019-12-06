@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <map>
+#include <algorithm>
 
 UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & debug)
 {
@@ -136,9 +137,9 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		if (!poi.has_value())
 			return (game.currentTick % 20 < 10 ? -game.properties.unitMaxHorizontalSpeed : game.properties.unitMaxHorizontalSpeed);
 		if (poi.value().first < unit.position.x)
-			return -game.properties.unitMaxHorizontalSpeed;
+			return std::max(-game.properties.unitMaxHorizontalSpeed, (poi.value().first - unit.position.x) * game.properties.ticksPerSecond);
 		if (poi.value().first > unit.position.x)
-			return game.properties.unitMaxHorizontalSpeed;
+			return std::min(game.properties.unitMaxHorizontalSpeed, (poi.value().first - unit.position.x) * game.properties.ticksPerSecond);
 		return 0.0;
 	}();
 	action.jump = [&] () {
@@ -146,9 +147,9 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			return true;
 		if (poi.value().second > unit.position.y)
 			return true;
-		if (unit.position.x < poi.value().first && game.level.tiles[static_cast<size_t>(unit.position.x + 1)][static_cast<size_t>(unit.position.y)] == Tile::WALL)
+		if (unit.position.x < poi.value().first - 1.0 && game.level.tiles[static_cast<size_t>(unit.position.x + 1)][static_cast<size_t>(unit.position.y)] == Tile::WALL)
 			return true;
-		if (unit.position.x > poi.value().first && game.level.tiles[static_cast<size_t>(unit.position.x - 1)][static_cast<size_t>(unit.position.y)] == Tile::WALL)
+		if (unit.position.x > poi.value().first + 1.0 && game.level.tiles[static_cast<size_t>(unit.position.x - 1)][static_cast<size_t>(unit.position.y)] == Tile::WALL)
 			return true;
 		auto const e = nearest_enemy();
 		if (e.has_value())
@@ -199,5 +200,13 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		debug.draw(CustomData::Log("RELOAD!"));
 		return true;
 	}();
+	if (action.jump)
+	{
+		if (game.level.tiles[static_cast<size_t>(unit.position.x)][static_cast<size_t>(unit.position.y - 0.5)] == Tile::PLATFORM && game.level.tiles[static_cast<size_t>(unit.position.x)][static_cast<size_t>(unit.position.y)] == Tile::EMPTY && unit.jumpState.maxTime < game.properties.unitJumpTime * 0.8)
+		{
+			debug.draw(CustomData::Log("REJUMP! " + std::to_string(unit.jumpState.maxTime)));
+			action.jump = false;
+		}
+	}
 	return action;
 }
