@@ -1,0 +1,21 @@
+{
+  "seed": null,
+  "options_preset": {
+    "Custom": {
+      "level": "Simple",
+      "properties": null
+    }
+  },
+  "players": [
+    {
+      "Tcp": {
+        "host": null,
+        "port": 31001,
+        "accept_timeout": null,
+        "timeout": null,
+        "token": null
+      }
+    },
+    "Quickstart"
+  ]
+}
