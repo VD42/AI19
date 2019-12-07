@@ -3,11 +3,20 @@
 #include <optional>
 #include <map>
 #include <algorithm>
+#include <cmath>
 
 UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & debug)
 {
 	const auto distance = [&] (double x, double y) {
 		return std::abs(unit.position.x - x) + std::abs(unit.position.y - y);
+	};
+
+	const auto cross = [&] (double x_left, double x_right, double y_top, double y_bottom) {
+		auto const u_x_left = unit.position.x - unit.size.x / 2.0 - 0.5;
+		auto const u_x_right = unit.position.x + unit.size.x / 2.0 + 0.5;
+		auto const u_y_top = unit.position.y + unit.size.y + 0.5;
+		auto const u_y_bottom = unit.position.y - 0.5;
+		return ((u_x_left < x_left && x_left < u_x_right || u_x_left < x_right && x_right < u_x_right) && (u_y_bottom < y_bottom && y_bottom < u_y_top || u_y_bottom < y_top && y_top < u_y_top));
 	};
 
 	const auto nearest_enemy = [&] () {
@@ -127,15 +136,16 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto const e = nearest_enemy();
 		if (!e.has_value())
 			return prev_aim[unit.id];
-		auto delta_x = e.value().first - prev_pos.first;
-		auto delta_y = e.value().second - prev_pos.second;
-		prev_pos = e.value();
-		auto const d = distance(e.value().first, e.value().second) - 0.5;
+		auto delta_x = 0.0;
+		auto delta_y = 0.0;
 		if (unit.weapon != nullptr)
 		{
-			delta_x *= d / unit.weapon->params.bullet.speed * game.properties.ticksPerSecond;
-			delta_y *= d / unit.weapon->params.bullet.speed * game.properties.ticksPerSecond;
+			auto const d = std::sqrt((unit.position.x - e.value().first) * (unit.position.x - e.value().first) + (unit.position.y - e.value().second) * (unit.position.y - e.value().second));
+			auto const t = std::min(d / unit.weapon->params.bullet.speed * game.properties.ticksPerSecond, 10.0);
+			delta_x = (e.value().first - prev_pos.first) * t;
+			delta_y = (e.value().second - prev_pos.second) * t;
 		}
+		prev_pos = e.value();
 		prev_aim[unit.id] = Vec2Double(e.value().first + delta_x - unit.position.x, e.value().second + delta_y - unit.position.y - game.properties.unitSize.y / 2.0);
 		debug.draw(CustomData::Rect(Vec2Float(unit.position.x + prev_aim[unit.id].x, unit.position.y + game.properties.unitSize.y / 2.0 + prev_aim[unit.id].y), Vec2Float(0.2, 0.2), ColorFloat(0.0, 1.0, 1.0, 0.5)));
 		return prev_aim[unit.id];
@@ -179,8 +189,18 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 	action.swapWeapon = [&] () {
 		if (unit.weapon == nullptr)
 			return true;
-		if (unit.weapon->typ != best_weapon)
-			return true;
+		if (unit.weapon->typ == best_weapon)
+			return false;
+		for (auto const& l : game.lootBoxes)
+		{
+			auto const w = std::dynamic_pointer_cast<const Item::Weapon>(l.item);
+			if (w == nullptr)
+				continue;
+			if (!cross(l.position.x - l.size.x / 2.0, l.position.x + l.size.x / 2.0, l.position.y + l.size.y, l.position.y))
+				continue;
+			if (w->weaponType == best_weapon)
+				return true;
+		}
 		return false;
 	}();
 	action.shoot = [&] () {
