@@ -5,6 +5,12 @@
 #include <algorithm>
 #include <cmath>
 
+#ifdef _DEBUG
+	#define DEBUG_DRAW(something) debug.draw(something)
+#else
+	#define DEBUG_DRAW(something)
+#endif
+
 UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & debug)
 {
 	const auto distance = [&] (double x, double y) {
@@ -132,11 +138,11 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 				return e.value().first;
 			if (u.weapon->fireTimer == nullptr)
 				return std::nullopt;
-			debug.draw(CustomData::Log("Enemy fire timer: " + std::to_string(*u.weapon->fireTimer)));
-			debug.draw(CustomData::Log("Enemy fire rate: " + std::to_string(u.weapon->params.fireRate)));
+			DEBUG_DRAW(CustomData::Log("Enemy fire timer: " + std::to_string(*u.weapon->fireTimer)));
+			DEBUG_DRAW(CustomData::Log("Enemy fire rate: " + std::to_string(u.weapon->params.fireRate)));
 			if (u.weapon->params.fireRate < *u.weapon->fireTimer)
 			{
-				debug.draw(CustomData::Log("SAFE TO ATTACK!!!"));
+				DEBUG_DRAW(CustomData::Log("SAFE TO ATTACK!!!"));
 				return e.value().first;
 			}
 			return std::nullopt;*/
@@ -151,14 +157,18 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 
 	auto const poi = point_of_interest();
 
+#ifdef _DEBUG
 	if (poi.has_value())
 	{
-		debug.draw(CustomData::Line(Vec2Float(unit.position.x, unit.position.y), Vec2Float(poi.value().first, poi.value().second), 0.1, ColorFloat(1.0, 1.0, 1.0, 0.5)));
-		debug.draw(CustomData::Rect(Vec2Float(poi.value().first, poi.value().second), Vec2Float(0.3, 0.3), ColorFloat(1.0, 1.0, 1.0, 0.5)));
+		DEBUG_DRAW(CustomData::Line(Vec2Float(unit.position.x, unit.position.y), Vec2Float(poi.value().first, poi.value().second), 0.1, ColorFloat(1.0, 1.0, 1.0, 0.5)));
+		DEBUG_DRAW(CustomData::Rect(Vec2Float(poi.value().first, poi.value().second), Vec2Float(0.3, 0.3), ColorFloat(1.0, 1.0, 1.0, 0.5)));
 	}
+#endif
 
+#ifdef _DEBUG
 	if (unit.weapon != nullptr)
-		debug.draw(CustomData::Log("Spread: " + std::to_string(unit.weapon->spread)));
+		DEBUG_DRAW(CustomData::Log("Spread: " + std::to_string(unit.weapon->spread)));
+#endif
 
 	UnitAction action;
 	action.plantMine = [&] () {
@@ -182,13 +192,13 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		if (unit.weapon != nullptr)
 		{
 			auto const d = distance_e(e.value().first.first, e.value().first.second);
-			auto const t = std::min(d / unit.weapon->params.bullet.speed * game.properties.ticksPerSecond, 10.0);
+			auto const t = std::min(d / unit.weapon->params.bullet.speed * game.properties.ticksPerSecond, 5.0);
 			delta_x = (e.value().first.first - prev_pos[e.value().second].first) * t;
 			delta_y = (e.value().first.second - prev_pos[e.value().second].second) * t;
 		}
 		prev_pos[e.value().second] = e.value().first;
 		prev_aim[unit.id] = Vec2Double(e.value().first.first + delta_x - unit.position.x, e.value().first.second + delta_y - unit.position.y - game.properties.unitSize.y / 2.0);
-		debug.draw(CustomData::Rect(Vec2Float(unit.position.x + prev_aim[unit.id].x, unit.position.y + game.properties.unitSize.y / 2.0 + prev_aim[unit.id].y), Vec2Float(0.2, 0.2), ColorFloat(0.0, 1.0, 1.0, 0.5)));
+		DEBUG_DRAW(CustomData::Rect(Vec2Float(unit.position.x + prev_aim[unit.id].x, unit.position.y + game.properties.unitSize.y / 2.0 + prev_aim[unit.id].y), Vec2Float(0.2, 0.2), ColorFloat(0.0, 1.0, 1.0, 0.5)));
 		return prev_aim[unit.id];
 	}();
 	action.velocity = [&] () {
@@ -212,7 +222,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto const e = nearest_enemy();
 		if (e.has_value())
 		{
-			debug.draw(CustomData::Log("Distance to enemy: " + std::to_string(distance(e.value().first.first, e.value().first.second))));
+			DEBUG_DRAW(CustomData::Log("Distance to enemy: " + std::to_string(distance(e.value().first.first, e.value().first.second))));
 			if (distance(e.value().first.first, e.value().first.second) < 1.8001)
 				return true;
 		}
@@ -267,7 +277,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			if (game.level.tiles[static_cast<size_t>(x)][static_cast<size_t>(y)] == Tile::WALL)
 				return false;
 		}
-		debug.draw(CustomData::Log("SHOOT!"));
+		DEBUG_DRAW(CustomData::Log("SHOOT!"));
 		return true;
 	}();
 	action.reload = [&] () {
@@ -277,14 +287,14 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			return false;
 		if (unit.weapon->magazine > unit.weapon->params.magazineSize / 2)
 			return false;
-		debug.draw(CustomData::Log("RELOAD!"));
+		DEBUG_DRAW(CustomData::Log("RELOAD!"));
 		return true;
 	}();
 	if (action.jump)
 	{
 		if (game.level.tiles[static_cast<size_t>(unit.position.x)][static_cast<size_t>(unit.position.y - 0.5)] == Tile::PLATFORM && game.level.tiles[static_cast<size_t>(unit.position.x)][static_cast<size_t>(unit.position.y)] == Tile::EMPTY && unit.jumpState.maxTime < game.properties.unitJumpTime * 0.8)
 		{
-			debug.draw(CustomData::Log("REJUMP! " + std::to_string(unit.jumpState.maxTime)));
+			DEBUG_DRAW(CustomData::Log("REJUMP! " + std::to_string(unit.jumpState.maxTime)));
 			action.jump = false;
 		}
 	}
