@@ -11,6 +11,14 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		return std::abs(unit.position.x - x) + std::abs(unit.position.y - y);
 	};
 
+	const auto distance_e = [&] (double x, double y) {
+		return std::sqrt((unit.position.x - x) * (unit.position.x - x) + (unit.position.y - y) * (unit.position.y - y));
+	};
+
+	const auto distance_e2 = [&](double x, double y) {
+		return (unit.position.x - x) * (unit.position.x - x) + (unit.position.y - y) * (unit.position.y - y);
+	};
+
 	const auto cross = [&] (double x_left, double x_right, double y_top, double y_bottom) {
 		auto const u_x_left = unit.position.x - unit.size.x / 2.0 - 0.5;
 		auto const u_x_right = unit.position.x + unit.size.x / 2.0 + 0.5;
@@ -21,7 +29,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 
 	const auto nearest_enemy = [&] () {
 		auto min_distance = std::numeric_limits<double>::max();
-		std::optional<std::pair<double, double>> result;
+		std::optional<std::pair<std::pair<double, double>, decltype(unit.id)>> result;
 		for (auto const& u : game.units)
 		{
 			if (u.playerId == unit.playerId)
@@ -30,7 +38,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			if (d < min_distance)
 			{
 				min_distance = d;
-				result = { u.position.x, u.position.y + game.properties.unitSize.y / 2.0 };
+				result = { { u.position.x, u.position.y + game.properties.unitSize.y / 2.0 }, u.id };
 			}
 		}
 		return result;
@@ -46,7 +54,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			if (hp == nullptr)
 				continue;
 			auto d = distance(l.position.x, l.position.y);
-			if (e.has_value() && std::abs(e.value().first - l.position.x) + std::abs(e.value().second - l.position.y) < d)
+			if (e.has_value() && std::abs(e.value().first.first - l.position.x) + std::abs(e.value().first.second - l.position.y) < d)
 				d += 100.0;
 			if (d < min_distance)
 			{
@@ -81,6 +89,14 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		return result;
 	};
 
+	const auto get_unit = [&] (decltype(unit.id) id) -> Unit const&
+	{
+		for (auto const& u : game.units)
+			if (u.id == id)
+				return u;
+		return unit;
+	};
+
 	const auto point_of_interest = [&] () -> std::optional<std::pair<double, double>> {
 		if ([&] () {
 			if (unit.health < game.properties.unitMaxHealth - game.properties.healthPackHealth / 2.0)
@@ -96,16 +112,41 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		}())
 		{
 			auto const hp = nearest_hp();
-			if (hp != std::nullopt)
+			if (hp.has_value())
 				return hp;
 		}
 		auto const w = nearest_weapon();
-		if (w != std::nullopt)
+		if (w.has_value())
 			return w;
-		auto const e = nearest_enemy();
-		//if (e.has_value() && distance(e.value().first, e.value().second) < 10.0)
-		//	return std::nullopt;
-		return e;
+		auto const e = [&] () -> std::optional<std::pair<double, double>> {
+			auto const e = nearest_enemy();
+			return e.value().first;
+			/*if (!e.has_value())
+				return std::nullopt;
+			auto const& u = get_unit(e.value().second);
+			if (u.weapon == nullptr)
+				return e.value().first;
+			auto const d_e2 = distance_e2(e.value().first.first, e.value().first.second);
+			constexpr auto min_range_e2 = 100.0;
+			if (min_range_e2 < d_e2)
+				return e.value().first;
+			if (u.weapon->fireTimer == nullptr)
+				return std::nullopt;
+			debug.draw(CustomData::Log("Enemy fire timer: " + std::to_string(*u.weapon->fireTimer)));
+			debug.draw(CustomData::Log("Enemy fire rate: " + std::to_string(u.weapon->params.fireRate)));
+			if (u.weapon->params.fireRate < *u.weapon->fireTimer)
+			{
+				debug.draw(CustomData::Log("SAFE TO ATTACK!!!"));
+				return e.value().first;
+			}
+			return std::nullopt;*/
+		}();
+		if (e.has_value())
+			return e;
+		auto const hp = nearest_hp();
+		if (hp.has_value())
+			return hp;
+		return std::nullopt;
 	};
 
 	auto const poi = point_of_interest();
@@ -126,13 +167,13 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto const e = nearest_enemy();
 		if (!e.has_value())
 			return false;
-		if (distance(e.value().first, e.value().second) < game.properties.mineExplosionParams.radius)
+		if (distance(e.value().first.first, e.value().first.second) < game.properties.mineExplosionParams.radius)
 			return true;
 		return false;
 	}();
 	action.aim = [&] () {
 		static std::map<decltype(unit.id), decltype(action.aim)> prev_aim;
-		static std::pair<double, double> prev_pos;
+		static std::map<decltype(unit.id), std::pair<double, double>> prev_pos;
 		auto const e = nearest_enemy();
 		if (!e.has_value())
 			return prev_aim[unit.id];
@@ -140,19 +181,19 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto delta_y = 0.0;
 		if (unit.weapon != nullptr)
 		{
-			auto const d = std::sqrt((unit.position.x - e.value().first) * (unit.position.x - e.value().first) + (unit.position.y - e.value().second) * (unit.position.y - e.value().second));
+			auto const d = distance_e(e.value().first.first, e.value().first.second);
 			auto const t = std::min(d / unit.weapon->params.bullet.speed * game.properties.ticksPerSecond, 10.0);
-			delta_x = (e.value().first - prev_pos.first) * t;
-			delta_y = (e.value().second - prev_pos.second) * t;
+			delta_x = (e.value().first.first - prev_pos[e.value().second].first) * t;
+			delta_y = (e.value().first.second - prev_pos[e.value().second].second) * t;
 		}
-		prev_pos = e.value();
-		prev_aim[unit.id] = Vec2Double(e.value().first + delta_x - unit.position.x, e.value().second + delta_y - unit.position.y - game.properties.unitSize.y / 2.0);
+		prev_pos[e.value().second] = e.value().first;
+		prev_aim[unit.id] = Vec2Double(e.value().first.first + delta_x - unit.position.x, e.value().first.second + delta_y - unit.position.y - game.properties.unitSize.y / 2.0);
 		debug.draw(CustomData::Rect(Vec2Float(unit.position.x + prev_aim[unit.id].x, unit.position.y + game.properties.unitSize.y / 2.0 + prev_aim[unit.id].y), Vec2Float(0.2, 0.2), ColorFloat(0.0, 1.0, 1.0, 0.5)));
 		return prev_aim[unit.id];
 	}();
 	action.velocity = [&] () {
 		if (!poi.has_value())
-			return (game.currentTick % 20 < 10 ? -game.properties.unitMaxHorizontalSpeed : game.properties.unitMaxHorizontalSpeed);
+			return (game.currentTick % 100 < 50 ? -game.properties.unitMaxHorizontalSpeed : game.properties.unitMaxHorizontalSpeed);
 		if (poi.value().first < unit.position.x)
 			return std::max(-game.properties.unitMaxHorizontalSpeed, (poi.value().first - unit.position.x) * game.properties.ticksPerSecond);
 		if (poi.value().first > unit.position.x)
@@ -171,8 +212,8 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto const e = nearest_enemy();
 		if (e.has_value())
 		{
-			debug.draw(CustomData::Log("Distance to enemy: " + std::to_string(distance(e.value().first, e.value().second))));
-			if (distance(e.value().first, e.value().second) < 1.8001)
+			debug.draw(CustomData::Log("Distance to enemy: " + std::to_string(distance(e.value().first.first, e.value().first.second))));
+			if (distance(e.value().first.first, e.value().first.second) < 1.8001)
 				return true;
 		}
 		return false;
@@ -212,8 +253,20 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto step_x = delta_x / 1000.0;
 		auto step_y = delta_y / 1000.0;
 		for (double i = 0.0; i < 1000.0; ++i)
-			if (game.level.tiles[static_cast<size_t>(unit.position.x + i * step_x)][static_cast<size_t>(unit.position.y + game.properties.unitSize.y / 2.0 + i * step_y)] == Tile::WALL)
+		{
+			auto const x = unit.position.x + i * step_x;
+			auto const y = unit.position.y + game.properties.unitSize.y / 2.0 + i * step_y;
+			if (x < 0)
 				return false;
+			if (y < 0)
+				return false;
+			if (x > game.level.tiles.size() - 1)
+				return false;
+			if (y > game.level.tiles[0].size() - 1)
+				return false;
+			if (game.level.tiles[static_cast<size_t>(x)][static_cast<size_t>(y)] == Tile::WALL)
+				return false;
+		}
 		debug.draw(CustomData::Log("SHOOT!"));
 		return true;
 	}();
