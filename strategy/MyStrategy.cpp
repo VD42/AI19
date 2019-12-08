@@ -13,6 +13,8 @@
 
 UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & debug)
 {
+	static decltype(unit.id) first_unit = unit.id;
+
 	const auto distance = [&] (double x, double y) {
 		return std::abs(unit.position.x - x) + std::abs(unit.position.y - y);
 	};
@@ -170,6 +172,8 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		DEBUG_DRAW(CustomData::Log("Spread: " + std::to_string(unit.weapon->spread)));
 #endif
 
+	static std::map<decltype(unit.id), std::pair<double, double>> prev_pos;
+
 	UnitAction action;
 	action.plantMine = [&] () {
 		return false;
@@ -183,7 +187,6 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 	}();
 	action.aim = [&] () {
 		static std::map<decltype(unit.id), decltype(action.aim)> prev_aim;
-		static std::map<decltype(unit.id), std::pair<double, double>> prev_pos;
 		auto const e = nearest_enemy();
 		if (!e.has_value())
 			return prev_aim[unit.id];
@@ -196,7 +199,6 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			delta_x = (e.value().first.first - prev_pos[e.value().second].first) * t;
 			delta_y = (e.value().first.second - prev_pos[e.value().second].second) * t;
 		}
-		prev_pos[e.value().second] = e.value().first;
 		prev_aim[unit.id] = Vec2Double(e.value().first.first + delta_x - unit.position.x, e.value().first.second + delta_y - unit.position.y - game.properties.unitSize.y / 2.0);
 		DEBUG_DRAW(CustomData::Rect(Vec2Float(unit.position.x + prev_aim[unit.id].x, unit.position.y + game.properties.unitSize.y / 2.0 + prev_aim[unit.id].y), Vec2Float(0.2, 0.2), ColorFloat(0.0, 1.0, 1.0, 0.5)));
 		return prev_aim[unit.id];
@@ -298,5 +300,16 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			action.jump = false;
 		}
 	}
+
+	if (first_unit)
+	{
+		for (auto const& u : game.units)
+		{
+			if (u.playerId == unit.playerId)
+				continue;
+			prev_pos[u.id] = { u.position.x, u.position.y + game.properties.unitSize.y / 2.0 };
+		}
+	}
+
 	return action;
 }

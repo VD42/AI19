@@ -1,4 +1,5 @@
 /strategy/.vs/strategy/v16
 /strategy/x64/Debug
 /strategy/strategy.zip
-/strategy/x64/Release
+/strategy/x64/Release/*
+!/strategy/x64/Release/strategy_*.exe
