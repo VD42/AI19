@@ -11,6 +11,24 @@
 	#define DEBUG_DRAW(something)
 #endif
 
+class CV2FW final
+{
+private:
+	double m_x;
+	double m_y;
+
+public:
+	CV2FW(double x, double y)
+		: m_x(x), m_y(y)
+	{
+	}
+
+	operator Vec2Float ()
+	{
+		return Vec2Float(static_cast<float>(m_x), static_cast<float>(m_y));
+	}
+};
+
 UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & debug)
 {
 	static decltype(unit.id) first_unit = unit.id;
@@ -27,12 +45,28 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		return (unit.position.x - x) * (unit.position.x - x) + (unit.position.y - y) * (unit.position.y - y);
 	};
 
+	const auto full_cross = [&] (double x1_left, double x1_right, double y1_top, double y1_bottom, double x2_left, double x2_right, double y2_top, double y2_bottom) {
+		return [&] () {
+			auto const x1_width = x1_right - x1_left;
+			auto const x2_width = x2_right - x2_left;
+			if (x1_width < x2_width)
+				return (x2_left < x1_left && x1_left < x2_right || x2_left < x1_right && x1_right < x2_right);
+			return (x1_left < x2_left && x2_left < x1_right || x1_left < x2_right && x2_right < x1_right);
+		}() && [&] () {
+			auto const y1_height = y1_top - y1_bottom;
+			auto const y2_height = y2_top - y2_bottom;
+			if (y1_height < y2_height)
+				return (y2_bottom < y1_bottom && y1_bottom < y2_top || y2_bottom < y1_top && y1_top < y2_top);
+			return (y1_bottom < y2_bottom && y2_bottom < y1_top || y1_bottom < y2_top && y2_top < y1_top);
+		}();
+	};
+
 	const auto cross = [&] (double x_left, double x_right, double y_top, double y_bottom) {
 		auto const u_x_left = unit.position.x - unit.size.x / 2.0 - 0.5;
 		auto const u_x_right = unit.position.x + unit.size.x / 2.0 + 0.5;
 		auto const u_y_top = unit.position.y + unit.size.y + 0.5;
 		auto const u_y_bottom = unit.position.y - 0.5;
-		return ((u_x_left < x_left && x_left < u_x_right || u_x_left < x_right && x_right < u_x_right) && (u_y_bottom < y_bottom && y_bottom < u_y_top || u_y_bottom < y_top && y_top < u_y_top));
+		return full_cross(u_x_left, u_x_right, u_y_top, u_y_bottom, x_left, x_right, y_top, y_bottom);
 	};
 
 	const auto nearest_enemy = [&] () {
@@ -162,8 +196,8 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 #ifdef _DEBUG
 	if (poi.has_value())
 	{
-		DEBUG_DRAW(CustomData::Line(Vec2Float(unit.position.x, unit.position.y), Vec2Float(poi.value().first, poi.value().second), 0.1, ColorFloat(1.0, 1.0, 1.0, 0.5)));
-		DEBUG_DRAW(CustomData::Rect(Vec2Float(poi.value().first, poi.value().second), Vec2Float(0.3, 0.3), ColorFloat(1.0, 1.0, 1.0, 0.5)));
+		DEBUG_DRAW(CustomData::Line(CV2FW(unit.position.x, unit.position.y), CV2FW(poi.value().first, poi.value().second), static_cast<float>(0.1), ColorFloat(1.0, 1.0, 1.0, 0.5)));
+		DEBUG_DRAW(CustomData::Rect(CV2FW(poi.value().first, poi.value().second), CV2FW(0.3, 0.3), ColorFloat(1.0, 1.0, 1.0, 0.5)));
 	}
 #endif
 
@@ -200,7 +234,7 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 			delta_y = (e.value().first.second - prev_pos[e.value().second].second) * t;
 		}
 		prev_aim[unit.id] = Vec2Double(e.value().first.first + delta_x - unit.position.x, e.value().first.second + delta_y - unit.position.y - game.properties.unitSize.y / 2.0);
-		DEBUG_DRAW(CustomData::Rect(Vec2Float(unit.position.x + prev_aim[unit.id].x, unit.position.y + game.properties.unitSize.y / 2.0 + prev_aim[unit.id].y), Vec2Float(0.2, 0.2), ColorFloat(0.0, 1.0, 1.0, 0.5)));
+		DEBUG_DRAW(CustomData::Rect(CV2FW(unit.position.x + prev_aim[unit.id].x, unit.position.y + game.properties.unitSize.y / 2.0 + prev_aim[unit.id].y), CV2FW(0.2, 0.2), ColorFloat(0.0, 1.0, 1.0, 0.5)));
 		return prev_aim[unit.id];
 	}();
 	action.velocity = [&] () {
@@ -260,25 +294,57 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 		auto const e = nearest_enemy();
 		if (!e.has_value())
 			return false;
-		auto delta_x = action.aim.x;
-		auto delta_y = action.aim.y;
-		auto step_x = delta_x / 1000.0;
-		auto step_y = delta_y / 1000.0;
-		for (double i = 0.0; i < 1000.0; ++i)
-		{
-			auto const x = unit.position.x + i * step_x;
-			auto const y = unit.position.y + game.properties.unitSize.y / 2.0 + i * step_y;
-			if (x < 0)
-				return false;
-			if (y < 0)
-				return false;
-			if (x > game.level.tiles.size() - 1)
-				return false;
-			if (y > game.level.tiles[0].size() - 1)
-				return false;
-			if (game.level.tiles[static_cast<size_t>(x)][static_cast<size_t>(y)] == Tile::WALL)
-				return false;
-		}
+
+		auto const check_aim = [&] (double aim_x, double aim_y) {
+			auto current_x = unit.position.x;
+			auto current_y = unit.position.y + game.properties.unitSize.y / 2.0;
+			auto step_x = aim_x / 1000.0;
+			auto step_y = aim_y / 1000.0;
+			for (int i = 0; i < 1000; ++i)
+			{
+				auto const current_x_size = static_cast<size_t>(current_x);
+				auto const current_y_size = static_cast<size_t>(current_y);
+				if (current_x_size < 0)
+					return false;
+				if (current_y_size < 0)
+					return false;
+				if (current_x_size > game.level.tiles.size() - 1)
+					return false;
+				if (current_y_size > game.level.tiles[0].size() - 1)
+					return false;
+				if (game.level.tiles[current_x_size][current_y_size] == Tile::WALL)
+					return false;
+				current_x += step_x;
+				current_y += step_y;
+			}
+			return true;
+		};
+
+		auto const spread = [&] () {
+			if (unit.weapon == nullptr)
+				return game.properties.weaponParams.at(WeaponType::ASSAULT_RIFLE).minSpread;
+			return unit.weapon->spread;
+		}();
+
+		auto const aim_down_x = action.aim.x * std::cos(spread) + action.aim.y * std::sin(spread);
+		auto const aim_down_y = -action.aim.x * std::sin(spread) + action.aim.y * std::cos(spread);
+
+		auto const aim_up_x = action.aim.x * std::cos(spread) - action.aim.y * std::sin(spread);
+		auto const aim_up_y = action.aim.x * std::sin(spread) + action.aim.y * std::cos(spread);
+
+		DEBUG_DRAW(CustomData::Line(CV2FW(unit.position.x, unit.position.y + game.properties.unitSize.y / 2.0), CV2FW(unit.position.x + aim_down_x, unit.position.y + game.properties.unitSize.y / 2.0 + aim_down_y), static_cast<float>(0.1), ColorFloat(1.0, 0.0, 0.0, 0.25)));
+		DEBUG_DRAW(CustomData::Line(CV2FW(unit.position.x, unit.position.y + game.properties.unitSize.y / 2.0), CV2FW(unit.position.x + action.aim.x, unit.position.y + game.properties.unitSize.y / 2.0 + action.aim.y), static_cast<float>(0.1), ColorFloat(1.0, 0.0, 0.0, 0.5)));
+		DEBUG_DRAW(CustomData::Line(CV2FW(unit.position.x, unit.position.y + game.properties.unitSize.y / 2.0), CV2FW(unit.position.x + aim_up_x, unit.position.y + game.properties.unitSize.y / 2.0 + aim_up_y), static_cast<float>(0.1), ColorFloat(1.0, 0.0, 0.0, 0.25)));
+
+		//if (!check_aim(aim_down_x, aim_down_y))
+		//	return false;
+
+		if (!check_aim(action.aim.x, action.aim.y))
+			return false;
+
+		//if (!check_aim(aim_up_x, aim_up_y))
+		//	return false;
+
 		DEBUG_DRAW(CustomData::Log("SHOOT!"));
 		return true;
 	}();
