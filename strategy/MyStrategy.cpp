@@ -314,6 +314,17 @@ UnitAction MyStrategy::getAction(Unit const& unit, Game const& game, Debug & deb
 					return false;
 				if (game.level.tiles[current_x_size][current_y_size] == Tile::WALL)
 					return false;
+				for (auto const& u : game.units)
+				{
+					if (u.playerId != unit.playerId)
+						continue;
+					if (u.id == unit.id)
+						continue;
+					if (u.position.x - u.size.x / 2.0 <= current_x && current_x <= u.position.x + u.size.x / 2.0)
+						return false;
+					if (u.position.y <= current_y && current_y <= u.position.y + u.size.y)
+						return false;
+				}
 				current_x += step_x;
 				current_y += step_y;
 			}
